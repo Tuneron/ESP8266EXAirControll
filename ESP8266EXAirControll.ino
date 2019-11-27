@@ -6,10 +6,10 @@
 #include <IRtimer.h>
 #include <IRremoteESP8266.h>
 
-#define TX_PIN      2     //D4 for RS485
-#define MAX485_RE_NEG  4  //D2 RS485 has a enable/disable pin to transmit or receive data. Arduino Digital Pin 2 = Rx/Tx 'Enable'; High to Transmit, Low to Receive
-#define RX_PIN      0     //D3 for RS485
-#define TTX_PIN  5        //D1 for IR transmitter
+//#define TX_PIN      3     //D4 for RS485
+#define MAX485_RE_NEG 2  //D2 RS485 has a enable/disable pin to transmit or receive data. Arduino Digital Pin 2 = Rx/Tx 'Enable'; High to Transmit, Low to Receive
+//#define RX_PIN     1      //D3 for RS485
+//#define TTX_PIN    0      //D1 for IR transmitter
 
 const char* ssid     = "SmartWifi";         // The SSID (name) of the Wi-Fi network you want to connect to
 const char* password = "ReeveOffice1!";     // The password of the Wi-Fi network
@@ -20,25 +20,37 @@ uint16_t au16data[REGISTERS] = {11, 22, 33, 44, 55};
 uint16_t au16datatemp[REGISTERS] = {0, 0, 0, 0, 0};
 
 WiFiClient client;
-Modbus slave(1,0,0);
+Modbus slave(1,0, MAX485_RE_NEG);
 long lastLogTime = millis();
 String logBuffer = "";
 
+int inc = 0;
+
 void setup() {
+  pinMode(MAX485_RE_NEG, OUTPUT);
+  digitalWrite(MAX485_RE_NEG, HIGH); //Switch to transmit data
+  digitalWrite(MAX485_RE_NEG, LOW); //Switch to receive data 
 
   WiFi.begin(ssid, password);             // Connect to the network
   while (WiFi.status() != WL_CONNECTED) { // Wait for the Wi-Fi to connect
     delay(1000);
   }  
   client.connect(host, port);
+    log("123");
 
   Serial.begin(9600, SERIAL_8N1);
   slave.begin(9600);
 }
 
 void loop() {
-  slave.poll(au16data, REGISTERS); 
-  logChanges();
+//  slave.poll(au16data, REGISTERS); 
+//  onUpdate();
+  if(Serial.available() > 0) {
+    log("123");
+    digitalWrite(MAX485_RE_NEG, HIGH); //Switch to transmit data
+    Serial.write(Serial.read());
+    digitalWrite(MAX485_RE_NEG, LOW); //Switch to receive data 
+  }
 }
 
 String printRegisters(uint16_t* registers, uint16_t regSize) {
@@ -51,7 +63,7 @@ String printRegisters(uint16_t* registers, uint16_t regSize) {
   return line;
 }
 
-void logChanges() {
+void onUpdate() {
   if (changes(au16data, REGISTERS)) {
     log(printRegisters(au16data, REGISTERS));
     for (int j = 0; j < REGISTERS; j++) {
