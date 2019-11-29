@@ -25,42 +25,28 @@ long lastLogTime = millis();
 String logBuffer = "";
 
 int inc = 0;
+String s = "";
 
 void setup() {
-  pinMode(MAX485_RE_NEG, OUTPUT);
-  digitalWrite(MAX485_RE_NEG, HIGH); //Switch to transmit data
-  digitalWrite(MAX485_RE_NEG, LOW); //Switch to receive data 
+//  pinMode(MAX485_RE_NEG, OUTPUT);
+//  digitalWrite(MAX485_RE_NEG, HIGH); //Switch to transmit data
+//  digitalWrite(MAX485_RE_NEG, LOW); //Switch to receive data 
 
   WiFi.begin(ssid, password);             // Connect to the network
   while (WiFi.status() != WL_CONNECTED) { // Wait for the Wi-Fi to connect
     delay(1000);
   }  
   client.connect(host, port);
-    log("123");
+    log("ESP8266 connected");
 
-  Serial.begin(9600, SERIAL_8N1);
-  slave.begin(9600);
+//  Serial.begin(9600, SERIAL_8N1);
+  slave.begin(9600, SERIAL_8N1);
 }
 
 void loop() {
-//  slave.poll(au16data, REGISTERS); 
-//  onUpdate();
-  if(Serial.available() > 0) {
-    log("123");
-    digitalWrite(MAX485_RE_NEG, HIGH); //Switch to transmit data
-    Serial.write(Serial.read());
-    digitalWrite(MAX485_RE_NEG, LOW); //Switch to receive data 
-  }
-}
-
-String printRegisters(uint16_t* registers, uint16_t regSize) {
-  String line = "[ ";
-  for (int i = 0; i < regSize; i++){
-    line += registers[i];
-    line += ", ";
-  }
-  line += "]";
-  return line;
+  delay(500);
+  slave.poll(au16data, REGISTERS); 
+  onUpdate();
 }
 
 void onUpdate() {
@@ -78,6 +64,16 @@ bool changes(uint16_t *input, int inputSize){
     return true;
   }
   return false;
+}
+
+String printRegisters(uint16_t* registers, uint16_t regSize) {
+  String line = "[ ";
+  for (int i = 0; i < regSize; i++){
+    line += registers[i];
+    line += ", ";
+  }
+  line += "]";
+  return line;
 }
 
 void logWithBuffer(String line) {
