@@ -1,39 +1,45 @@
 #include <ESP8266WiFi.h>    // Include the Wi-Fi library
 #include <SoftwareSerial.h> //https://github.com/plerup/espsoftwareserial
-#include <ModbusRtu.h>
 #include <IRac.h>
 #include <IRsend.h>
 #include <IRtimer.h>
 #include <IRremoteESP8266.h>
+#include "ir_Mitsubishi.h"        //case 12
 
-//#define TX_PIN      3     //D4 for RS485
-#define MAX485_RE_NEG 2  //D2 RS485 has a enable/disable pin to transmit or receive data. Arduino Digital Pin 2 = Rx/Tx 'Enable'; High to Transmit, Low to Receive
-//#define RX_PIN     1      //D3 for RS485
-//#define TTX_PIN    0      //D1 for IR transmitter
+#define MAX485_RE_NEG 0  // GPIO0 for RS485 has a enable/disable pin to transmit or receive data. Arduino Digital Pin 2 = Rx/Tx 'Enable'; High to Transmit, Low to Receive
+#define TTX_PIN  2 // GPIO2 for IR transmitter
 
 const char* ssid     = "SmartWifi";         // The SSID (name) of the Wi-Fi network you want to connect to
 const char* password = "ReeveOffice1!";     // The password of the Wi-Fi network
 const char* host = "192.168.1.23";          // Server IP
 const uint16_t port = 21;                   // Server Port
 const int REGISTERS = 5;
-uint16_t au16data[REGISTERS] = {11, 22, 33, 44, 55};
-uint16_t au16datatemp[REGISTERS] = {0, 0, 0, 0, 0};
-uint8_t pack[(REGISTERS * 2) + 5];
-int count = 0;
-uint16_t inputPack[19] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
-uint8_t answ16f[8] = {0x01, 0x10, 0x00, 0x00, 0x00, 0x05, 0x00, 0x0A};
 
-WiFiClient client;
-Modbus slave(1,0, MAX485_RE_NEG);
+uint16_t au16data[REGISTERS] = {11, 22, 33, 44, 55};
+uint16_t au16datatemp[19] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+uint16_t inputPack[19] = {0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0};
+
+uint8_t pack[(REGISTERS * 2) + 5];
+uint8_t answ16f[8] = {0x01, 0x10, 0x00, 0x00, 0x00, 0x05, 0x00, 0x0A};
+uint8_t acAuto; 
+uint8_t acCool;
+uint8_t acDry;
+uint8_t acHeat;
+uint8_t acFan;
+
+int count = 0;
 long lastLogTime = millis();
 String logBuffer = "";
 
-int inc = 0;
+WiFiClient client;
+IRMitsubishiAC ac (TTX_PIN);
 
 void setup() {
+  
   pinMode(MAX485_RE_NEG, OUTPUT);
   digitalWrite(MAX485_RE_NEG, HIGH); //Switch to transmit data
   digitalWrite(MAX485_RE_NEG, LOW); //Switch to receive data 
+  pinMode(TTX_PIN, OUTPUT);
 
   WiFi.begin(ssid, password);             // Connect to the network
   while (WiFi.status() != WL_CONNECTED) { // Wait for the Wi-Fi to connect
@@ -42,29 +48,18 @@ void setup() {
   client.connect(host, port);
     log("ESP8266 answer");
 
+  acAuto = kMitsubishiAcAuto;
+  acDry = kMitsubishiAcDry;
+  acHeat = kMitsubishiAcHeat;
+  acCool = kMitsubishiAcCool;
+   
+  ac.begin();    
+
   Serial.begin(9600, SERIAL_8N1);
-  slave.begin(9600);
 }
 
 void loop() {
-
-
-//  slave.poll(au16data, REGISTERS); 
-//  
-
-
-
-//   uint8_t inputPack[15] = {0x01, 0x03, 0x0A, 0x00, 0x0B, 0x00, 0x16, 0x00, 0x21, 0x00, 0x2C, 0x00, 0x37, 0x1C, 0x5F};
-//     uint8_t inputPack[13] = {0x01, 0x03, 0x0A, 0x00, 0x0B, 0x00, 0x16, 0x00, 0x21, 0x00, 0x2C, 0x00, 0x37};
-//     uint8_t inputRegisters[5] = {11, 22, 33, 44, 55};
-//   
-//   Serial.write(inputPack, 15);
-//   delay(1500);
-//
-    
-
-    
-
+  
   digitalWrite(MAX485_RE_NEG, LOW); //Switch to receive data 
   if(Serial.available() > 0) {
     inputPack[count] = Serial.read();
@@ -72,11 +67,21 @@ void loop() {
   }
 
    if (count == 19){
-    log(printRegisters(inputPack, 19));
+    
+    if(onUpdate()){
+      ac.on();
+      ac.setTemp(inputPack[8]);
+      digitalWrite(TTX_PIN, HIGH); // ON
+      ac.send(); 
+      digitalWrite(TTX_PIN, LOW); // OFF
+      //log("Command was send");
+    }
+    
+    //log(printRegisters(inputPack, 19));
     digitalWrite(MAX485_RE_NEG, HIGH); //Switch to transmit data
     Serial.write(answ16f, 8);
     count = 0;
-    delay (1000);
+    delay (1500);
    }
    
   
@@ -103,13 +108,16 @@ String printRegisters8t(uint8_t* registers, uint8_t regSize) {
   return line;
 }
 
-void onUpdate() {
-  if (changes(au16data, REGISTERS)) {
-    log(printRegisters(au16data, REGISTERS));
-    for (int j = 0; j < REGISTERS; j++) {
-      au16datatemp[j] = au16data[j];
+bool onUpdate() {
+  if (changes(inputPack, 19)) {
+    log(printRegisters(inputPack, 19));
+    for (int j = 0; j < 19; j++) {
+      au16datatemp[j] = inputPack[j];
     }
+    return true;
   }
+  else
+  return false;
 }
 
 bool changes(uint16_t *input, int inputSize){
